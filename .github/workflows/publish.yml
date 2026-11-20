@@ -6,13 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       member:
-        description: "要更新哪位成員？輸入 all 代表全部 24 位，例如 Mayu"
+        description: "要更新哪位成員？輸入 all 更新全部，或輸入 Mayu 等成員名稱"
         required: false
         default: "all"
         type: string
   schedule:
-    # UTC 03:17 = 台灣時間 11:17，每日執行。GitHub 可能會延遲。
-    - cron: "17 3 * * *"
+    # 每小時的 02、07、12……57 分執行，間隔 5 分鐘（UTC）。
+    # 避開整點尖峰，但 GitHub 不保證準時，可能延遲或跳過。
+    - cron: "2-59/5 * * * *"
 
 permissions:
   contents: write
@@ -39,14 +40,30 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 決定本次更新成員
+        id: choose
+        if: github.event_name != 'push'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MEMBER: ${{ inputs.member || 'all' }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            MEMBER=$(python -c 'import os; names = "SeoYeon HyeRin JiWoo ChaeYeon YooYeon SooMin NaKyoung YuBin Kaede DaHyun Kotone YeonJi Nien SoHyun Xinyu Mayu Lynn JooBin HaYeon ShiOn ChaeWon Sullin SeoAh JiYeon".split(); print(names[(int(os.environ["GITHUB_RUN_NUMBER"])-1) % len(names)])')
+          else
+            MEMBER="$INPUT_MEMBER"
+          fi
+          echo "member=$MEMBER" >> "$GITHUB_OUTPUT"
+          echo "本次更新成員：$MEMBER"
+
       - name: 讀取 objekt.top 及統計持有套數
+        id: fetch
         if: github.event_name != 'push'
         continue-on-error: true
         env:
-          MEMBER: ${{ github.event.inputs.member || 'all' }}
+          MEMBER: ${{ steps.choose.outputs.member }}
         run: python scripts/update_rankings.py --member "$MEMBER"
 
-      - name: 儲存成功更新的排行榜
+      - name: 儲存本次更新的排行榜
         if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
@@ -55,6 +72,8 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "自動更新 Cream02 First 排行榜"
             git push
+          else
+            echo "排行榜資料沒有變更"
           fi
 
       - name: 設定 GitHub Pages
@@ -68,3 +87,9 @@ jobs:
       - name: 發布公開網站
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: 資料更新失敗時顯示紅色狀態
+        if: github.event_name != 'push' && steps.fetch.outcome == 'failure'
+        run: |
+          echo "資料抓取失敗：網站已發布可用的舊資料，請檢查『讀取 objekt.top 及統計持有套數』紀錄。"
+          exit 1
