@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#101526" />
+  <meta name="description" content="tripleS Cream02 First Class，24 位成員的 Objekt 完整持有套數排行榜。" />
+  <title>tripleS｜Cream02 First 套數排行榜</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --surface:#151c30; --surface2:#1c2540; --stroke:#35405a; --text:#f5f7ff; --muted:#a5b2cf; --violet:#ae94ff; --cyan:#80e7e2; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:radial-gradient(1000px 450px at 95% -5%,#3d285e77,transparent 70%),radial-gradient(650px 450px at -10% 12%,#18566b55,transparent 70%),var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
+    a { color:var(--cyan); }
+    button,select,input { font:inherit; }
+    button { cursor:pointer; }
+    button:focus-visible,select:focus-visible,input:focus-visible { outline:3px solid var(--cyan); outline-offset:3px; }
+    .wrap { max-width:1050px; margin:auto; padding:30px 22px 85px; }
+    .eyebrow { display:inline-flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:800; color:var(--cyan); }
+    .dot { width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 15px var(--cyan); }
+    .header { display:flex;align-items:flex-start;justify-content:space-between;gap:15px; }
+    h1 { font-size:clamp(32px,5vw,58px);letter-spacing:-.055em;line-height:1.08;margin:18px 0 12px;font-weight:850; }
+    h1 span { color:var(--violet); }
+    .desc { color:var(--muted);font-size:15px;line-height:1.8;max-width:690px; }
+    .outline { color:var(--text);text-decoration:none;border:1px solid var(--stroke);border-radius:99px;padding:10px 14px;white-space:nowrap;font-size:13px; }
+    .panel { background:linear-gradient(145deg,#192139f2,#141b30f2);border:1px solid var(--stroke);border-radius:22px;padding:20px;margin-top:25px;box-shadow:0 20px 55px #060a1880; }
+    .control-grid { display:grid;grid-template-columns: minmax(0,1fr) minmax(0,1fr);gap:18px; }
+    .field-label { display:block;font-size:13px;color:var(--muted);margin-bottom:9px;font-weight:750; }
+    select,input { width:100%;background:#0e1528;border:1px solid var(--stroke);border-radius:12px;padding:13px 14px;color:var(--text);font-size:16px; }
+    .segments { display:flex;flex-wrap:wrap;gap:9px;margin-top:18px; }
+    .segment { padding:10px 14px;border-radius:999px;background:var(--surface2);color:var(--muted);border:1px solid var(--stroke);font-size:13px;font-weight:700; }
+    .segment[aria-pressed="true"] { background:var(--violet);color:#1b1530;border-color:var(--violet); }
+    .stats { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:20px; }
+    .stat { border:1px solid var(--stroke);background:#0d1528aa;border-radius:16px;padding:15px; }
+    .stat span { display:block;color:var(--muted);font-size:12px;margin-bottom:5px; }
+    .stat strong { font-size:clamp(20px,3vw,32px);letter-spacing:-.03em; }
+    .toolbar { display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 12px; }
+    h2 { margin:0;font-size:23px;letter-spacing:-.025em; }
+    .updated { color:var(--muted);font-size:12px;line-height:1.6; }
+    .list { display:flex;flex-direction:column;gap:10px; }
+    .ranking { display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:14px;align-items:center;padding:16px 17px;background:var(--surface);border:1px solid var(--stroke);border-radius:16px; }
+    .ranking.top { border-color:#68568d;background:linear-gradient(105deg,#28243e,#182139); }
+    .rank { font-size:23px;font-weight:800;letter-spacing:-.03em;color:var(--muted);font-variant-numeric:tabular-nums; }
+    .top .rank { color:#ffdd91; }
+    .nickname { font-size:16px;font-weight:800;overflow-wrap:anywhere; }
+    .wallet { font-size:11px;color:var(--muted);margin-top:5px;word-break:break-all; }
+    .breakdown { display:flex;gap:11px;margin-top:8px;flex-wrap:wrap;color:var(--muted);font-size:12px; }
+    .breakdown strong { color:#d3dcf3;font-weight:650; }
+    .total { text-align:right;font-size:27px;font-weight:850;font-variant-numeric:tabular-nums;color:var(--cyan);min-width:68px; }
+    .total small { display:block;font-size:11px;color:var(--muted);font-weight:600; }
+    .state { background:#151d32;border:1px dashed #53617e;text-align:center;color:var(--muted);line-height:1.9;padding:32px 18px;border-radius:16px; }
+    .more { width:100%;margin-top:12px;padding:13px;background:#1a2540;border:1px solid var(--stroke);border-radius:13px;color:var(--text);font-weight:700; }
+    .footer { line-height:1.9;color:var(--muted);font-size:12px;margin-top:28px; }
+    .footer strong { color:var(--text); }
+    .toast { color:#ffdfae;font-size:13px;min-height:20px; }
+    @media (max-width:600px) { .wrap {padding:23px 14px 55px;} .header {flex-direction:column;} .control-grid {grid-template-columns:1fr;} .panel {padding:16px;} .stats {gap:8px;} .stat {padding:11px;} .ranking {grid-template-columns:37px minmax(0,1fr) 58px;gap:8px;padding:13px 10px;} .rank {font-size:19px;} .total {font-size:23px;min-width:0;} .breakdown {gap:7px;} }
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <div class="header">
+    <div>
+      <div class="eyebrow"><i class="dot"></i> tripleS · 24 Members</div>
+      <h1>Cream02 <span>First</span><br />套數排行榜</h1>
+      <p class="desc">比較每位成員的 Cosmo Objekt 持有者，按照真正湊齊的完整套數排序。可切換 101–108、109–116、117–120 三組統計。</p>
+    </div>
+    <a class="outline" href="https://objekt.top/" target="_blank" rel="noopener noreferrer">資料來源：objekt.top ↗</a>
+  </div>
+
+  <section class="panel" aria-label="排行榜篩選條件">
+    <div class="control-grid">
+      <div><label class="field-label" for="member">選擇成員</label><select id="member"></select></div>
+      <div><label class="field-label" for="search">尋找持有者（Cosmo 名稱／錢包）</label><input id="search" type="search" placeholder="例如：tomSanS4" autocomplete="off" /></div>
+    </div>
+    <div class="segments" id="editions" aria-label="選擇統計範圍">
+      <button class="segment" data-key="total" aria-pressed="true">全部套數</button>
+      <button class="segment" data-key="a" aria-pressed="false">101–108Z</button>
+      <button class="segment" data-key="b" aria-pressed="false">109–116Z</button>
+      <button class="segment" data-key="c" aria-pressed="false">117–120Z</button>
+    </div>
+    <div class="stats" aria-label="目前統計">
+      <div class="stat"><span>有完整套數的持有錢包</span><strong id="holderCount">—</strong></div>
+      <div class="stat"><span>最高持有套數</span><strong id="highest">—</strong></div>
+      <div class="stat"><span>已收錄排名</span><strong id="ranksCount">—</strong></div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <h2 id="rankTitle">排名</h2>
+    <div class="updated" id="updated">正在讀取資料…</div>
+  </div>
+  <p class="toast" id="notice" aria-live="polite"></p>
+  <div class="list" id="list" aria-live="polite"><div class="state">正在載入排行榜…</div></div>
+  <button id="more" class="more" type="button" hidden>顯示更多排名</button>
+
+  <p class="footer"><strong>計算方式：</strong>101–108Z 的每個編號至少各有一張才算一套；109–116Z 同理；117–120Z 則需四種各一張。每組套數＝該組所有編號的最少持有張數，總套數＝三組相加。只納入 tripleS／Cream02／First／線上 Z 卡。排行榜以<strong>錢包地址</strong>為單位，不能保證同一人多個錢包自動合併。此頁顯示定期快照，不代表每秒更新，也不隸屬於 Modhaus 或 objekt.top。</p>
+</main>
+<script>
+'use strict';
+const MEMBERS = ['SeoYeon','HyeRin','JiWoo','ChaeYeon','YooYeon','SooMin','NaKyoung','YuBin','Kaede','DaHyun','Kotone','YeonJi','Nien','SoHyun','Xinyu','Mayu','Lynn','JooBin','HaYeon','ShiOn','ChaeWon','Sullin','SeoAh','JiYeon'];
+const KEY_NAMES = {total:'全部套數',a:'101–108Z',b:'109–116Z',c:'117–120Z'};
+const $ = id => document.getElementById(id);
+let database = {members:{}};
+let key = 'total';
+let shown = 50;
+const urlParams = new URLSearchParams(location.search);
+const savedMember = (urlParams.get('member') || 'Mayu').toLowerCase();
+const member = $('member');
+MEMBERS.forEach((name,i) => {const o = document.createElement('option');o.value=name;o.textContent=`S${String(i+1).padStart(2,'0')} ${name}`;member.appendChild(o);});
+member.value = MEMBERS.find(n=>n.toLowerCase()===savedMember) || 'Mayu';
+key = Object.hasOwn(KEY_NAMES, urlParams.get('edition')) ? urlParams.get('edition') : 'total';
+document.querySelectorAll('[data-key]').forEach(button => {
+  button.addEventListener('click',()=> {key=button.dataset.key;shown=50;syncUrl();render();});
+});
+member.addEventListener('change',()=>{shown=50;$('search').value='';syncUrl();render();});
+$('search').addEventListener('input',()=>{shown=50;render();});
+$('more').addEventListener('click',()=>{shown+=50;render();});
+function syncUrl() {const u = new URL(location.href);u.searchParams.set('member',member.value);u.searchParams.set('edition',key);history.replaceState(null,'',u);}
+function safeText(node,value){node.textContent=String(value);}
+function render(){
+  document.querySelectorAll('[data-key]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.key===key)));
+  safeText($('rankTitle'),`${member.value} · ${KEY_NAMES[key]}排行榜`);
+  const entry=database.members?.[member.value];
+  const updated=entry?.checkedAt || database.updatedAt;
+  safeText($('updated'),updated ? `資料更新：${new Date(updated).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false})}（臺灣時間）`:'尚未完成首次資料更新');
+  const rows=Array.isArray(entry?.rows) ? [...entry.rows] : [];
+  const rated=rows.filter(r=>Number(r[key])>0).sort((x,y)=>Number(y[key])-Number(x[key]) || Number(y.total)-Number(x.total) || String(x.name).localeCompare(String(y.name)));
+  let last=null,position=0;
+  rated.forEach((r,i)=> {if(Number(r[key])!==last){position=i+1;last=Number(r[key]);}r.position=position;});
+  safeText($('holderCount'),rated.length.toLocaleString('zh-TW'));
+  safeText($('highest'),rated.length?`${rated[0][key]} 套`:'—');
+  safeText($('ranksCount'),rated.length.toLocaleString('zh-TW'));
+  $('notice').textContent=entry?.error ? `注意：${entry.error}；顯示上次成功的資料。` : '';
+  const q=$('search').value.trim().toLowerCase();
+  const filtered=rated.filter(r=>!q || String(r.name).toLowerCase().includes(q) || String(r.address).toLowerCase().includes(q));
+  const list=$('list');list.replaceChildren();
+  if(!entry || !Array.isArray(entry.rows)){
+    showEmpty('此成員還沒有完整的統計資料。請先在 GitHub Actions 執行「更新持有排行榜」；若更新失敗，請查看執行紀錄。');
+  } else if(!filtered.length) {
+    showEmpty(q?'找不到符合搜尋條件的持有者。':'目前沒有持有這個類別完整套數的錢包。');
+  } else {
+    filtered.slice(0,shown).forEach(r=>{
+      const article=document.createElement('article');article.className=`ranking${r.position<=3?' top':''}`;
+      const rank=document.createElement('div');rank.className='rank';rank.textContent=`#${r.position}`;
+      const info=document.createElement('div');
+      const name=document.createElement('div');name.className='nickname';name.textContent=r.name || '未顯示名稱';
+      const addr=document.createElement('div');addr.className='wallet';const a=String(r.address);addr.textContent=`錢包 ${a.slice(0,8)}…${a.slice(-6)}`;
+      const details=document.createElement('div');details.className='breakdown';
+      for(const [label,k] of [['101–108','a'],['109–116','b'],['117–120','c']]){
+        const span=document.createElement('span');span.textContent=`${label}：`;
+        const strong=document.createElement('strong');strong.textContent=String(r[k] ?? 0);span.appendChild(strong);details.appendChild(span);
+      }
+      info.append(name,addr,details);
+      const total=document.createElement('div');total.className='total';total.textContent=String(r[key]);
+      const label=document.createElement('small');label.textContent='套';total.appendChild(label);
+      article.append(rank,info,total);list.appendChild(article);
+    });
+  }
+  $('more').hidden=filtered.length<=shown;
+}
+function showEmpty(message){const el=document.createElement('div');el.className='state';el.textContent=message;$('list').appendChild(el);}
+async function start(){
+  try {
+    // 相對路徑可以正確部署在 username.github.io/repo-name/ 之下。
+    const response=await fetch(`./data/rankings.json?t=${Date.now()}`,{cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const next=await response.json();
+    if(!next || typeof next.members!=='object')throw new Error('資料格式不正確');
+    database=next;render();
+  } catch(error) {
+    $('updated').textContent='讀取資料失敗';
+    $('notice').textContent=`無法讀取 rankings.json：${error.message}`;
+    $('list').replaceChildren();
+    showEmpty('請確認 data/rankings.json 已放在網站中。');
+  }
+}
+syncUrl();start();
+</script>
+</body>
+</html>
