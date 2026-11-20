@@ -1,0 +1,70 @@
+name: 更新持有排行榜並發布網站
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      member:
+        description: "要更新哪位成員？輸入 all 代表全部 24 位，例如 Mayu"
+        required: false
+        default: "all"
+        type: string
+  schedule:
+    # UTC 03:17 = 台灣時間 11:17，每日執行。GitHub 可能會延遲。
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-and-ranking
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 讀取 objekt.top 及統計持有套數
+        if: github.event_name != 'push'
+        continue-on-error: true
+        env:
+          MEMBER: ${{ github.event.inputs.member || 'all' }}
+        run: python scripts/update_rankings.py --member "$MEMBER"
+
+      - name: 儲存成功更新的排行榜
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/rankings.json
+          if ! git diff --cached --quiet; then
+            git commit -m "自動更新 Cream02 First 排行榜"
+            git push
+          fi
+
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上傳網站
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./public
+
+      - name: 發布公開網站
+        id: deployment
+        uses: actions/deploy-pages@v4
