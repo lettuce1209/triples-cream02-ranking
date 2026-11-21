@@ -11,9 +11,7 @@ on:
         options:
           - test
           - all
-  schedule:
-    - cron: "*/5 * * * *"
-
+          
 permissions:
   contents: read
 
