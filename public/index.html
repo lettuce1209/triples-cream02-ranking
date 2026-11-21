@@ -93,14 +93,18 @@
   <div class="list" id="list" aria-live="polite"><div class="state">正在載入排行榜…</div></div>
   <button id="more" class="more" type="button" hidden>顯示更多排名</button>
 
-  <p class="footer"><strong>計算方式：</strong>101–108Z 的每個編號至少各有一張才算一套；109–116Z 同理；117–120Z 則需四種各一張。每組套數＝該組所有編號的最少持有張數，總套數＝三組相加。只納入 tripleS／Cream02／First／線上 Z 卡。排行榜以<strong>錢包地址</strong>為單位，不能保證同一人多個錢包自動合併。此頁顯示定期快照，不代表每秒更新，也不隸屬於 Modhaus 或 objekt.top。</p>
+  <p class="footer"><strong>計算方式：</strong>101–108Z 的每個編號至少各有一張才算一套；109–116Z 同理；117–120Z 則需四種各一張。每組套數＝該組所有編號的最少持有張數，總套數＝三組相加。只納入 tripleS／Cream02／First／線上 Z 卡。排行榜以<strong>錢包地址</strong>為單位，不能保證同一人多個錢包自動合併。此頁每 10 秒檢查最新成功快照，不代表來源每秒更新，也不隸屬於 Modhaus 或 objekt.top。</p>
 </main>
 <script>
 'use strict';
 const MEMBERS = ['SeoYeon','HyeRin','JiWoo','ChaeYeon','YooYeon','SooMin','NaKyoung','YuBin','Kaede','DaHyun','Kotone','YeonJi','Nien','SoHyun','Xinyu','Mayu','Lynn','JooBin','HaYeon','ShiOn','ChaeWon','Sullin','SeoAh','JiYeon'];
 const KEY_NAMES = {total:'全部套數',a:'101–108Z',b:'109–116Z',c:'117–120Z'};
 const $ = id => document.getElementById(id);
+// 填入你在 Cloudflare 建立的 workers.dev 網址（不要加最後的 /）
+const LIVE_API = 'https://cream02-live-api.roger9212091050080.workers.dev';
 let database = {members:{}};
+let lastShownTimestamp = null;
+
 let key = 'total';
 let shown = 50;
 const urlParams = new URLSearchParams(location.search);
@@ -112,7 +116,7 @@ key = Object.hasOwn(KEY_NAMES, urlParams.get('edition')) ? urlParams.get('editio
 document.querySelectorAll('[data-key]').forEach(button => {
   button.addEventListener('click',()=> {key=button.dataset.key;shown=50;syncUrl();render();});
 });
-member.addEventListener('change',()=>{shown=50;$('search').value='';syncUrl();render();});
+member.addEventListener('change',()=>{shown=50;$('search').value='';syncUrl();render();refreshLive();});
 $('search').addEventListener('input',()=>{shown=50;render();});
 $('more').addEventListener('click',()=>{shown+=50;render();});
 function syncUrl() {const u = new URL(location.href);u.searchParams.set('member',member.value);u.searchParams.set('edition',key);history.replaceState(null,'',u);}
@@ -159,22 +163,43 @@ function render(){
   $('more').hidden=filtered.length<=shown;
 }
 function showEmpty(message){const el=document.createElement('div');el.className='state';el.textContent=message;$('list').appendChild(el);}
-async function start(){
+async function refreshLive() {
+  if (LIVE_API.includes('請改成你的Worker網址')) return;
+  const selected = member.value;
   try {
-    // 相對路徑可以正確部署在 username.github.io/repo-name/ 之下。
-    const response=await fetch(`./data/rankings.json?t=${Date.now()}`,{cache:'no-store'});
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
-    const next=await response.json();
-    if(!next || typeof next.members!=='object')throw new Error('資料格式不正確');
-    database=next;render();
-  } catch(error) {
-    $('updated').textContent='讀取資料失敗';
-    $('notice').textContent=`無法讀取 rankings.json：${error.message}`;
-    $('list').replaceChildren();
-    showEmpty('請確認 data/rankings.json 已放在網站中。');
+    const response = await fetch(`${LIVE_API}/api/member?name=${encodeURIComponent(selected)}&t=${Date.now()}`, {cache:'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    if (selected !== member.value || !result.entry || !Array.isArray(result.entry.rows)) return;
+    const old = database.members?.[selected]?.checkedAt;
+    if (!database.members) database.members = {};
+    if (!old || Date.parse(result.entry.checkedAt) >= Date.parse(old)) {
+      database.members[selected] = result.entry;
+      if (old !== result.entry.checkedAt) render();
+    }
+  } catch (error) {
+    // 即時資料暫時不可用時，保留上次成功的資料，不清空排行榜。
+    console.warn('即時資料暫時無法讀取', error);
   }
 }
+async function start(){
+  try {
+    // 原本的 GitHub Pages JSON 作為備援，Cloudflare 即時資料為主要來源。
+    const response = await fetch(`./data/rankings.json?t=${Date.now()}`,{cache:'no-store'});
+    if (response.ok) {
+      const next = await response.json();
+      if (next && typeof next.members === 'object') database = next;
+    }
+  } catch (error) {
+    console.warn('備援資料讀取失敗', error);
+  }
+  render();
+  await refreshLive();
+}
 syncUrl();start();
+// 訪客開著網站時，每 10 秒檢查「目前選取成員」的最新結果。
+setInterval(() => { if (!document.hidden) refreshLive(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLive(); });
 </script>
 </body>
 </html>
