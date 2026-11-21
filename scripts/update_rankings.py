@@ -24,7 +24,7 @@ RANGES = {'a':tuple(range(101,109)), 'b':tuple(range(109,117)), 'c':tuple(range(
 _request_lock = threading.Lock()
 _last_request = 0.0
 MIN_REQUEST_INTERVAL = 0.5
-MAX_CARD_WORKERS = 3
+MAX_CARD_WORKERS = 5
 
 
 def get_json(path):
