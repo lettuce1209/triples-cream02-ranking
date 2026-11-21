@@ -1,35 +1,66 @@
-name: Cream02 即時排行榜更新（先測試再擴大）
+name: Cream02 即時排行榜更新（24 位每 5 分鐘）
 
 on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "test = 只測 2 位；all = 更新 24 位"
+        description: "test = 只測 2 位；all = 更新全部 24 位"
         required: true
         default: "test"
         type: choice
         options:
           - test
           - all
+  schedule:
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
 
-# 避免上一輪尚未結束時，下一輪持續堆積或覆蓋資料。
+# 排程每輪都更新 24 位；上一輪若未完成，避免兩輪同時覆寫同一位成員。
+# GitHub 可能延遲或略過排程；這不是精準每 5 分鐘完成的保證。
 concurrency:
-  group: cream02-live-refresh
+  group: cream02-live-refresh-${{ github.event_name == 'schedule' && 'schedule' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
+  choose:
+    runs-on: ubuntu-latest
+    outputs:
+      members: ${{ steps.pick.outputs.members }}
+    steps:
+      - name: 決定本次更新成員
+        id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCOPE: ${{ inputs.scope }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          names = [
+              "SeoYeon", "HyeRin", "JiWoo", "ChaeYeon", "YooYeon", "SooMin",
+              "NaKyoung", "YuBin", "Kaede", "DaHyun", "Kotone", "YeonJi",
+              "Nien", "SoHyun", "Xinyu", "Mayu", "Lynn", "JooBin",
+              "HaYeon", "ShiOn", "ChaeWon", "Sullin", "SeoAh", "JiYeon",
+          ]
+          if os.environ["EVENT_NAME"] == "schedule" or os.environ.get("SCOPE") == "all":
+              members = names
+          else:
+              members = ["SeoYeon", "Mayu"]
+          print("members=" + json.dumps(members))
+          PY
+
   update:
+    needs: choose
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      # 初期保守設定：每次最多 2 位同時抓取；實測並確認來源允許後才能提高。
-      max-parallel: 2
+      max-parallel: 24
       matrix:
-        member: ${{ fromJSON(inputs.scope == 'all' && '["SeoYeon","HyeRin","JiWoo","ChaeYeon","YooYeon","SooMin","NaKyoung","YuBin","Kaede","DaHyun","Kotone","YeonJi","Nien","SoHyun","Xinyu","Mayu","Lynn","JooBin","HaYeon","ShiOn","ChaeWon","Sullin","SeoAh","JiYeon"]' || '["SeoYeon","Mayu"]') }}
+        member: ${{ fromJSON(needs.choose.outputs.members) }}
     steps:
       - name: 取得程式碼
         uses: actions/checkout@v4
