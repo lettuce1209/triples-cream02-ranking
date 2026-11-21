@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cream02 First 排行榜：每位成員最多 3 張卡片平行讀取，分頁仍依序驗證。"""
+"""Cream02 First rankings: bounded parallel card/page fetch with completeness checks."""
 import argparse
 import concurrent.futures
 import json
@@ -19,12 +19,13 @@ from pathlib import Path
 API = 'https://objekt.top/api/v1'
 OUT = Path(__file__).resolve().parents[1] / 'public' / 'data' / 'rankings.json'
 MEMBERS = ['SeoYeon','HyeRin','JiWoo','ChaeYeon','YooYeon','SooMin','NaKyoung','YuBin','Kaede','DaHyun','Kotone','YeonJi','Nien','SoHyun','Xinyu','Mayu','Lynn','JooBin','HaYeon','ShiOn','ChaeWon','Sullin','SeoAh','JiYeon']
-RANGES = {'a':tuple(range(101,109)), 'b':tuple(range(109,117)), 'c':tuple(range(117,121))}
-# 單一 GitHub 工作的請求速率限制；不同 Actions 工作不共享此限制。
-_request_lock = threading.Lock()
-_last_request = 0.0
+RANGES = {'a': tuple(range(101,109)), 'b': tuple(range(109,117)), 'c': tuple(range(117,121))}
 MIN_REQUEST_INTERVAL = 0.5
 MAX_CARD_WORKERS = 5
+MAX_PAGE_WORKERS = 4
+PAGE_SIZE = 50
+_request_lock = threading.Lock()
+_last_request = 0.0
 
 
 def get_json(path):
@@ -38,174 +39,206 @@ def get_json(path):
             _last_request = time.monotonic()
         try:
             req = urllib.request.Request(url, headers={
-                'Accept':'application/json',
-                'User-Agent':'tripleS-cream02-ranking/1.0 (fan-made public data viewer)',
+                'Accept': 'application/json',
+                'User-Agent': 'tripleS-cream02-ranking/1.0 (fan-made public data viewer)',
             })
             with urllib.request.urlopen(req, timeout=35) as response:
                 value = json.load(response)
-            if isinstance(value,dict) and isinstance(value.get('data'),dict):
-                value=value['data']
-            if isinstance(value,dict) and isinstance(value.get('body'),dict):
-                value=value['body']
+            if isinstance(value, dict) and isinstance(value.get('data'), dict):
+                value = value['data']
+            if isinstance(value, dict) and isinstance(value.get('body'), dict):
+                value = value['body']
             return value
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as ex:
-            retryable = not isinstance(ex,urllib.error.HTTPError) or ex.code in (429,500,502,503,504)
-            if not retryable or attempt==4:
-                raise RuntimeError(f'讀取 {url} 失敗：{ex}') from ex
-            pause=min(3*(2**attempt)+random.random(),35)
-            logging.warning('資料來源暫時失敗，%.1f 秒後重試：%s',pause,ex)
+            retryable = not isinstance(ex, urllib.error.HTTPError) or ex.code in (429,500,502,503,504)
+            if not retryable or attempt == 4:
+                raise RuntimeError(f'è®å {url} å¤±æï¼{ex}') from ex
+            pause = min(3 * (2 ** attempt) + random.random(), 35)
+            logging.warning('API æ«æå¤±æï¼%.1f ç§å¾éè©¦ï¼%s', pause, ex)
             time.sleep(pause)
     raise AssertionError('unreachable')
 
 
 def norm(value):
-    return re.sub(r'[^a-z0-9]','',str(value).lower())
+    return re.sub(r'[^a-z0-9]', '', str(value).lower())
 
 
 def collection_number(c):
-    raw=str(c.get('collectionNo',''))
-    found=re.fullmatch(r'(\d{3})[zZ]?',raw)
-    if found:
-        return int(found.group(1))
-    slug=str(c.get('slug',''))
-    found=re.search(r'-(\d{3})z$',slug,flags=re.IGNORECASE)
-    return int(found.group(1)) if found else None
+    raw = str(c.get('collectionNo', ''))
+    match = re.fullmatch(r'(\d{3})[zZ]?', raw)
+    if match:
+        return int(match.group(1))
+    match = re.search(r'-(\d{3})z$', str(c.get('slug', '')), flags=re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def index_collections(collections):
-    indexed=defaultdict(dict)
+    indexed = defaultdict(dict)
     for c in collections:
-        if norm(c.get('artist'))!='triples' or norm(c.get('season')) not in ('cream02','c2'):
+        if norm(c.get('artist')) != 'triples' or norm(c.get('season')) not in ('cream02','c2'):
             continue
-        if norm(c.get('class'))!='first' or str(c.get('onOffline','')).lower()!='online':
+        if norm(c.get('class')) != 'first' or str(c.get('onOffline','')).lower() != 'online':
             continue
-        n=collection_number(c)
-        if n is None or not 101<=n<=120:
+        n = collection_number(c)
+        if n is None or not 101 <= n <= 120:
             continue
-        member=next((m for m in MEMBERS if norm(m)==norm(c.get('member'))),None)
+        member = next((m for m in MEMBERS if norm(m) == norm(c.get('member'))), None)
         if not member:
             continue
-        slug=c.get('slug')
-        if not isinstance(slug,str) or not slug:
-            raise ValueError(f'卡片 {member} {n} 缺少 slug')
+        slug = c.get('slug')
+        if not isinstance(slug, str) or not slug:
+            raise ValueError(f'{member} {n} ç¼ºå° slug')
         if n in indexed[member]:
-            raise ValueError(f'{member} {n} 發現重複卡片，需人工檢查：{slug}')
-        indexed[member][n]=slug
+            raise ValueError(f'{member} {n} éè¤å¡çï¼{slug}')
+        indexed[member][n] = slug
     return indexed
 
 
-def holder_pages(slug):
-    offset=0
-    results={}
-    count_pages=0
-    while True:
-        path=f'/collections/{urllib.parse.quote(slug,safe="")}/holders?offset={offset}&limit=50'
-        payload=get_json(path)
-        if not isinstance(payload,dict) or not isinstance(payload.get('rows'),list):
-            raise ValueError(f'{slug} holders 回傳格式不符：{str(payload)[:250]}')
-        for item in payload['rows']:
-            holder=item.get('holder',{})
-            address=str(holder.get('address','')).lower()
-            copies=item.get('copies',0)
-            if not re.fullmatch(r'0x[0-9a-f]{40}',address):
-                raise ValueError(f'{slug} 出現非預期錢包地址：{address}')
-            if not isinstance(copies,int) or copies<=0:
-                raise ValueError(f'{slug} 出現非預期 copies：{copies}')
+def fetch_page(slug, offset):
+    path = f'/collections/{urllib.parse.quote(slug, safe="")}/holders?offset={offset}&limit={PAGE_SIZE}'
+    payload = get_json(path)
+    if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+        raise ValueError(f'{slug} offset={offset} åå³æ ¼å¼é¯èª¤')
+    return payload
+
+
+def holder_pages_once(slug):
+    first = fetch_page(slug, 0)
+    summary = first.get('summary')
+    total = summary.get('holders') if isinstance(summary, dict) else None
+    if not isinstance(total, int) or total < 0:
+        raise ValueError(f'{slug} ç¼ºå°ææ summary.holdersï¼ä¸è½å®å¨å¹³è¡åé ')
+    if total > 2_000_000:
+        raise ValueError(f'{slug} ææäººæ¸ç°å¸¸ï¼{total}')
+    offsets = list(range(0, total, PAGE_SIZE))
+    pages = {0: first}
+    if len(offsets) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PAGE_WORKERS) as pool:
+            futures = {pool.submit(fetch_page, slug, offset): offset for offset in offsets[1:]}
+            for future in concurrent.futures.as_completed(futures):
+                pages[futures[future]] = future.result()
+    results = {}
+    for offset in offsets:
+        payload = pages[offset]
+        rows = payload['rows']
+        expected_count = min(PAGE_SIZE, total - offset)
+        if len(rows) != expected_count:
+            raise ValueError(f'{slug} offset={offset} é æ {expected_count} ç­ï¼å¯¦é {len(rows)} ç­')
+        next_offset = payload.get('nextOffset')
+        expected_next = offset + PAGE_SIZE if offset + PAGE_SIZE < total else None
+        if next_offset != expected_next:
+            raise ValueError(f'{slug} offset={offset} nextOffset={next_offset}ï¼é æ {expected_next}')
+        page_summary = payload.get('summary')
+        if isinstance(page_summary, dict) and isinstance(page_summary.get('holders'), int) and page_summary['holders'] != total:
+            raise ValueError(f'{slug} åé æéç¸½ææäººæ¸è®åï¼æçµç¼å¸')
+        for item in rows:
+            if not isinstance(item, dict):
+                raise ValueError(f'{slug} ææäººè³ææ ¼å¼é¯èª¤')
+            holder = item.get('holder')
+            if not isinstance(holder, dict):
+                raise ValueError(f'{slug} holder æ ¼å¼é¯èª¤')
+            address = str(holder.get('address', '')).lower()
+            copies = item.get('copies', 0)
+            if not re.fullmatch(r'0x[0-9a-f]{40}', address):
+                raise ValueError(f'{slug} ç¡æé¢åå°åï¼{address}')
+            if type(copies) is not int or copies <= 0:
+                raise ValueError(f'{slug} ç¡æ copiesï¼{copies}')
             if address in results:
-                raise ValueError(f'{slug} 分頁出現重複錢包地址：{address}')
-            results[address]={'copies':copies,'nickname':holder.get('nickname')}
-        nxt=payload.get('nextOffset')
-        count_pages+=1
-        if nxt is None:
-            total=payload.get('summary',{}).get('holders')
-            if isinstance(total,int) and total!=len(results):
-                raise ValueError(f'{slug} 取回 {len(results)} 位，但網站宣告 {total} 位。')
-            return results
-        if not isinstance(nxt,int) or nxt<=offset:
-            raise ValueError(f'{slug} nextOffset 不正確：{nxt}')
-        offset=nxt
-        if count_pages>2000:
-            raise ValueError(f'{slug} 分頁過多，為安全起見停止')
+                raise ValueError(f'{slug} åé éè¤é¢åï¼{address}')
+            results[address] = {'copies': copies, 'nickname': holder.get('nickname')}
+    if len(results) != total:
+        raise ValueError(f'{slug} ææ {total} ä½ï¼å¯¦é {len(results)} ä½')
+    return results
+
+
+def holder_pages(slug):
+    # åé éç¨è¥ææäººè®åï¼éææ´å¼µå¡ä¸æ¬¡ï¼åæ¬¡ä¸ä¸è´å°±ä¿çèæ¦å®ã
+    for attempt in range(2):
+        try:
+            return holder_pages_once(slug)
+        except ValueError as exc:
+            if attempt:
+                raise
+            logging.warning('%s åé é©è­å¤±æï¼éè©¦ä¸æ¬¡ï¼%s', slug, exc)
+            time.sleep(1)
+    raise AssertionError('unreachable')
 
 
 def score(accounts):
-    scores=[]
-    for address,info in accounts.items():
-        holdings=info['holdings']
-        groups={key:min(holdings.get(n,0) for n in nos) for key,nos in RANGES.items()}
-        total=sum(groups.values())
-        if total==0:
-            continue
-        name=info['nickname'] or (address[:9]+'…'+address[-6:])
-        scores.append({'name':name,'address':address,'total':total,**groups})
-    scores.sort(key=lambda r:(-r['total'],-r['a'],-r['b'],-r['c'],r['address']))
+    scores = []
+    for address, info in accounts.items():
+        holdings = info['holdings']
+        groups = {key: min(holdings.get(n, 0) for n in nos) for key, nos in RANGES.items()}
+        total = sum(groups.values())
+        if total:
+            name = info['nickname'] or (address[:9] + 'â¦' + address[-6:])
+            scores.append({'name': name, 'address': address, 'total': total, **groups})
+    scores.sort(key=lambda r: (-r['total'], -r['a'], -r['b'], -r['c'], r['address']))
     return scores
 
 
-def update_member(member,index):
-    slugs=index.get(member,{})
-    missing=[n for n in range(101,121) if n not in slugs]
+def update_member(member, index):
+    slugs = index.get(member, {})
+    missing = [n for n in range(101, 121) if n not in slugs]
     if missing:
-        raise ValueError(f'{member} 缺少 {len(missing)} 張卡片：{missing}，不更新避免錯誤排行榜。')
-    accounts=defaultdict(lambda:{'holdings':{},'nickname':None})
-    # 只讓不同卡片平行；同一卡片分頁仍按 nextOffset 順序，確保完整性。
+        raise ValueError(f'{member} ç¼ºå°å¡çï¼{missing}')
+    accounts = defaultdict(lambda: {'holdings': {}, 'nickname': None})
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_CARD_WORKERS) as pool:
-        futures={pool.submit(holder_pages,slugs[n]):n for n in range(101,121)}
-        completed=0
+        futures = {pool.submit(holder_pages, slugs[n]): n for n in range(101, 121)}
+        completed = 0
         for future in concurrent.futures.as_completed(futures):
-            number=futures[future]
-            people=future.result()  # 任一卡片失敗就不發布這位成員
-            for address,detail in people.items():
-                accounts[address]['holdings'][number]=detail['copies']
+            number = futures[future]
+            people = future.result()
+            for address, detail in people.items():
+                accounts[address]['holdings'][number] = detail['copies']
                 if detail['nickname']:
-                    accounts[address]['nickname']=detail['nickname']
-            completed+=1
-            logging.info('%s：%d/20 %s，%d 位持有人',member,completed,slugs[number],len(people))
-    return {'checkedAt':datetime.now(timezone.utc).isoformat(timespec='seconds'),
-            'rows':score(accounts),'walletsWithAnyFirst':len(accounts),'collectionsVerified':20}
+                    accounts[address]['nickname'] = detail['nickname']
+            completed += 1
+            logging.info('%sï¼%d/20 %sï¼%d ä½ææäºº', member, completed, slugs[number], len(people))
+    return {'checkedAt': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'rows': score(accounts), 'walletsWithAnyFirst': len(accounts), 'collectionsVerified': 20}
 
 
 def persist(database):
-    database['updatedAt']=datetime.now(timezone.utc).isoformat(timespec='seconds')
-    OUT.parent.mkdir(parents=True,exist_ok=True)
-    tmp=OUT.with_suffix('.tmp')
-    tmp.write_text(json.dumps(database,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+    database['updatedAt'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = OUT.with_suffix('.tmp')
+    tmp.write_text(json.dumps(database, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     tmp.replace(OUT)
 
 
 def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--member',default='all',help='all 或指定 Mayu、SeoYeon 等')
-    args=parser.parse_args()
-    logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
-    target=MEMBERS if args.member.lower()=='all' else [next((m for m in MEMBERS if m.lower()==args.member.lower()),None)]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--member', default='all')
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    target = MEMBERS if args.member.lower() == 'all' else [next((m for m in MEMBERS if m.lower() == args.member.lower()), None)]
     if None in target:
-        parser.error('成員名稱不正確。請輸入 all 或 24 位英文成員名稱之一。')
-    database=json.loads(OUT.read_text(encoding='utf-8')) if OUT.exists() else {
-        'version':1,'source':'https://objekt.top/','updatedAt':None,'members':{}}
-    logging.info('正在讀取 objekt.top Collection 清單')
-    payload=get_json('/collections?originals=false&ids=false')
-    if not isinstance(payload,dict) or not isinstance(payload.get('collections'),list):
-        raise ValueError(f'Collection API 格式不符：{str(payload)[:300]}')
-    index=index_collections(payload['collections'])
-    failed=[]
+        parser.error('è«è¼¸å¥ all æ 24 ä½æå¡è±æåç¨±')
+    database = json.loads(OUT.read_text(encoding='utf-8')) if OUT.exists() else {
+        'version': 1, 'source': 'https://objekt.top/', 'updatedAt': None, 'members': {}}
+    payload = get_json('/collections?originals=false&ids=false')
+    if not isinstance(payload, dict) or not isinstance(payload.get('collections'), list):
+        raise ValueError('Collection API æ ¼å¼é¯èª¤')
+    index = index_collections(payload['collections'])
+    failed = []
     for member in target:
         try:
-            entry=update_member(member,index)
-            database['members'][member]=entry
+            entry = update_member(member, index)
+            database['members'][member] = entry
             persist(database)
-            logging.info('完成 %s：%d 筆持有至少一套的錢包',member,len(entry['rows']))
-        except (ValueError,RuntimeError,urllib.error.URLError) as exc:
-            logging.exception('更新 %s 失敗',member)
+            logging.info('å®æ %sï¼%d ä½å®æ´å¥æ¸ææè', member, len(entry['rows']))
+        except (ValueError, RuntimeError, urllib.error.URLError) as exc:
+            logging.exception('æ´æ° %s å¤±æï¼%s', member, exc)
             failed.append(member)
-            previous=database['members'].get(member)
-            if isinstance(previous,dict) and 'rows' in previous:
-                previous['error']=f'最近一次更新失敗（{datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}）'
+            previous = database['members'].get(member)
+            if isinstance(previous, dict) and 'rows' in previous:
+                previous['error'] = f'æè¿ä¸æ¬¡æ´æ°å¤±æï¼{datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}ï¼'
                 persist(database)
     if failed:
-        logging.error('以下成員未成功更新：%s',', '.join(failed))
+        logging.error('æ´æ°å¤±æï¼%s', ', '.join(failed))
         return 1
     return 0
 
-if __name__=='__main__':
+if __name__ == '__main__':
     sys.exit(main())
